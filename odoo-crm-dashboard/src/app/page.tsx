@@ -1,28 +1,10 @@
-const kpis = [
-  ['Total Leads', '4,974', '+128 this month'],
-  ['Admissions', '39', '₹32.4L confirmed'],
-  ['Conversion', '2.4%', '+0.3% vs last month'],
-  ['Due Today', '84', 'Needs action'],
-  ['Overdue', '126', '37 high priority'],
-  ['Forecast', '₹58.2L', 'Weighted pipeline'],
-];
+import { getDashboardData } from '@/lib/dashboard';
 
-const stages = [
-  ['New Lead', 132, 16, '₹0'],
-  ['Qualified', 202, 24, '₹70K'],
-  ['Appointment Scheduled', 5, 1, '₹0'],
-  ['Visited School', 2, 1, '₹0'],
-  ['NEET Long Term', 44, 19, '₹12.8L'],
-  ['Admission Confirmed', 39, 28, '₹32.4L'],
-];
+export const dynamic = 'force-dynamic';
 
-const agents = [
-  ['Sachin', 87, 389, 7, '1.8%', 40, 72],
-  ['Ramya', 70, 269, 7, '2.6%', 35, 57],
-  ['Rohan', 92, 170, 5, '2.9%', 15, 40],
-];
+export default async function DashboardPage() {
+  const data = await getDashboardData();
 
-export default function DashboardPage() {
   return (
     <div className="shell">
       <aside className="sidebar">
@@ -42,7 +24,12 @@ export default function DashboardPage() {
       <main className="main">
         <div className="topbar">
           <div>
-            <h1>Admissions Command Center</h1>
+            <div className="title-row">
+              <h1>Admissions Command Center</h1>
+              <span className={`connection ${data.connected ? 'online' : 'offline'}`}>
+                {data.connected ? 'Live Odoo' : 'Odoo disconnected'}
+              </span>
+            </div>
             <div className="sub">Live operational view across institutes, programmes, agents and lead stages.</div>
           </div>
           <div className="filters">
@@ -52,8 +39,15 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {!data.connected && (
+          <div className="connection-error">
+            <strong>Odoo connection failed.</strong>
+            <span>{data.error}</span>
+          </div>
+        )}
+
         <section className="grid kpis">
-          {kpis.map(([label, value, note]) => (
+          {data.kpis.map(([label, value, note]) => (
             <div className="card" key={label}>
               <div className="kpi-label">{label}</div>
               <div className="kpi-value">{value}</div>
@@ -63,36 +57,36 @@ export default function DashboardPage() {
         </section>
 
         <section className="alerts">
-          <div className="alert danger"><span>Overdue follow-ups</span><strong>126</strong></div>
-          <div className="alert warn"><span>Stagnant leads</span><strong>169</strong></div>
-          <div className="alert warn"><span>No action recorded</span><strong>58</strong></div>
-          <div className="alert good"><span>Appointments today</span><strong>12</strong></div>
+          <div className="alert danger"><span>Overdue follow-ups</span><strong>{data.alerts.overdue}</strong></div>
+          <div className="alert warn"><span>Stagnant leads</span><strong>{data.alerts.stagnant}</strong></div>
+          <div className="alert warn"><span>No action recorded</span><strong>{data.alerts.noAction}</strong></div>
+          <div className="alert good"><span>Appointments</span><strong>{data.alerts.appointments}</strong></div>
         </section>
 
         <section className="grid two">
           <div className="card">
             <div className="section-title">Pipeline Distribution</div>
-            <div className="section-sub">Lead count, share and expected value at each important stage.</div>
-            {stages.map(([stage, count, share, value]) => (
+            <div className="section-sub">Live lead count and expected revenue grouped by Odoo stage.</div>
+            {data.stages.length ? data.stages.map(([stage, count, share, value]) => (
               <div className="pipeline-row" key={String(stage)}>
                 <strong>{stage}</strong>
                 <span>{count}</span>
                 <div className="bar"><span style={{ width: `${share}%` }} /></div>
                 <span>{value}</span>
               </div>
-            ))}
+            )) : <div className="empty">No pipeline data available.</div>}
           </div>
 
           <div className="card">
-            <div className="section-title">Today’s Priorities</div>
-            <div className="section-sub">The highest-impact work for the admissions team.</div>
+            <div className="section-title">Operational Priorities</div>
+            <div className="section-sub">Queues requiring immediate attention in Odoo.</div>
             <table>
-              <thead><tr><th>Lead</th><th>Programme</th><th>Status</th></tr></thead>
+              <thead><tr><th>Queue</th><th>Count</th><th>Priority</th></tr></thead>
               <tbody>
-                <tr><td>Akash R.</td><td>NEET Long Term</td><td><span className="badge hot">Overdue</span></td></tr>
-                <tr><td>Navya M.</td><td>Grade 11 Science</td><td><span className="badge">Due today</span></td></tr>
-                <tr><td>Rahul P.</td><td>JEE Repeaters</td><td><span className="badge good">Hot lead</span></td></tr>
-                <tr><td>Sahana K.</td><td>Grade 1 ICSE</td><td><span className="badge">Appointment</span></td></tr>
+                <tr><td>Overdue follow-ups</td><td>{data.alerts.overdue}</td><td><span className="badge hot">Immediate</span></td></tr>
+                <tr><td>Due today</td><td>{data.kpis[3]?.[1]}</td><td><span className="badge">Today</span></td></tr>
+                <tr><td>Stagnant leads</td><td>{data.alerts.stagnant}</td><td><span className="badge">Review</span></td></tr>
+                <tr><td>Appointments</td><td>{data.alerts.appointments}</td><td><span className="badge good">Active</span></td></tr>
               </tbody>
             </table>
           </div>
@@ -100,15 +94,17 @@ export default function DashboardPage() {
 
         <section className="card" style={{ marginTop: 16 }}>
           <div className="section-title">Telecaller Performance</div>
-          <div className="section-sub">Daily effort, assigned leads, conversions and operational risk.</div>
-          <table>
-            <thead><tr><th>Agent</th><th>Calls</th><th>Leads</th><th>Admissions</th><th>Conversion</th><th>Overdue</th><th>Stagnant</th></tr></thead>
-            <tbody>
-              {agents.map(([name, calls, leads, admissions, conversion, overdue, stagnant]) => (
-                <tr key={String(name)}><td><strong>{name}</strong></td><td>{calls}</td><td>{leads}</td><td>{admissions}</td><td>{conversion}</td><td>{overdue}</td><td>{stagnant}</td></tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="section-sub">Live assigned leads and confirmed admissions by Odoo salesperson.</div>
+          {data.agents.length ? (
+            <table>
+              <thead><tr><th>Agent</th><th>Calls</th><th>Leads</th><th>Admissions</th><th>Conversion</th><th>Overdue</th><th>Stagnant</th></tr></thead>
+              <tbody>
+                {data.agents.map(([name, calls, leads, admissions, conversion, overdue, stagnant]) => (
+                  <tr key={String(name)}><td><strong>{name}</strong></td><td>{calls || '—'}</td><td>{leads}</td><td>{admissions}</td><td>{conversion}</td><td>{overdue || '—'}</td><td>{stagnant || '—'}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          ) : <div className="empty">No salesperson data available.</div>}
         </section>
       </main>
     </div>
