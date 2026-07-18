@@ -18,12 +18,19 @@ type OdooConfig = {
 
 function getConfig(): OdooConfig {
   const url = process.env.ODOO_URL?.replace(/\/$/, '');
-  const database = process.env.ODOO_DATABASE;
+  const database = process.env.ODOO_DATABASE || process.env.ODOO_DB;
   const username = process.env.ODOO_USERNAME;
-  const password = process.env.ODOO_PASSWORD;
+  const password = process.env.ODOO_PASSWORD || process.env.ODOO_API_KEY;
 
   if (!url || !database || !username || !password) {
-    throw new Error('Missing one or more Odoo environment variables.');
+    const missing = [
+      !url ? 'ODOO_URL' : null,
+      !database ? 'ODOO_DATABASE or ODOO_DB' : null,
+      !username ? 'ODOO_USERNAME' : null,
+      !password ? 'ODOO_PASSWORD or ODOO_API_KEY' : null,
+    ].filter(Boolean);
+
+    throw new Error(`Missing Odoo environment variables: ${missing.join(', ')}.`);
   }
 
   return { url, database, username, password };
