@@ -29,7 +29,6 @@ function getConfig(): OdooConfig {
       !username ? 'ODOO_USERNAME' : null,
       !password ? 'ODOO_PASSWORD or ODOO_API_KEY' : null,
     ].filter(Boolean);
-
     throw new Error(`Missing Odoo environment variables: ${missing.join(', ')}.`);
   }
 
@@ -42,7 +41,6 @@ function sleep(ms: number): Promise<void> {
 
 async function jsonRpc<T>(service: string, method: string, args: unknown[]): Promise<T> {
   const { url } = getConfig();
-
   for (let attempt = 0; attempt < 4; attempt += 1) {
     const response = await fetch(`${url}/jsonrpc`, {
       method: 'POST',
@@ -61,23 +59,15 @@ async function jsonRpc<T>(service: string, method: string, args: unknown[]): Pro
       await sleep(retryAfter > 0 ? retryAfter * 1000 : 500 * 2 ** attempt);
       continue;
     }
-
-    if (!response.ok) {
-      throw new Error(`Odoo HTTP error ${response.status}`);
-    }
+    if (!response.ok) throw new Error(`Odoo HTTP error ${response.status}`);
 
     const payload = (await response.json()) as JsonRpcResponse<T>;
     if (payload.error) {
       throw new Error(payload.error.data?.message || payload.error.message || 'Unknown Odoo RPC error');
     }
-
-    if (payload.result === undefined) {
-      throw new Error('Odoo returned no result.');
-    }
-
+    if (payload.result === undefined) throw new Error('Odoo returned no result.');
     return payload.result;
   }
-
   throw new Error('Odoo rate limit exceeded. Please retry shortly.');
 }
 
@@ -115,4 +105,18 @@ export async function readGroup<T>(
   kwargs: Record<string, unknown> = {},
 ): Promise<T[]> {
   return executeKw<T[]>(model, 'read_group', [domain, fields, groupBy], { lazy: false, ...kwargs });
+}
+
+export async function searchRead<T>(
+  model: string,
+  domain: OdooDomain,
+  fields: string[],
+  options: { limit?: number; offset?: number; order?: string } = {},
+): Promise<T[]> {
+  return executeKw<T[]>(model, 'search_read', [domain], {
+    fields,
+    limit: options.limit ?? 80,
+    offset: options.offset ?? 0,
+    order: options.order ?? 'write_date desc',
+  });
 }
