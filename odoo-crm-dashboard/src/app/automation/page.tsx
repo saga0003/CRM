@@ -1,0 +1,17 @@
+import { AppShell } from '@/components/AppShell';
+
+const rules=[
+ ['New lead response SLA','New lead with no update after 2 hours','Alert assigned agent and team leader','Ready for scheduled checker'],
+ ['Missed follow-up','Open mail.activity past deadline','Move into overdue queue and alert owner','Live queue working'],
+ ['No next action','Lead updated but no open activity','Prompt agent to schedule follow-up','Ready for scheduled checker'],
+ ['Hot lead escalation','Local score reaches 76+','Surface in management and agent priority queues','Live scoring working'],
+ ['Appointment reminder','Appointment activity due tomorrow','Send reminder to agent; WhatsApp later','Needs messaging provider'],
+ ['Drop governance','Stage changed to Drop','Require structured reason and recovery date','Needs custom Odoo field'],
+ ['Admission notification','Stage becomes Admission Confirmed','Notify management and update target achievement','Analytics working'],
+ ['Stagnant recovery','No update for 7+ days with score above 45','Create recovery task','Ready for scheduled checker'],
+];
+export default function AutomationPage(){return <AppShell active="/automation" title="Automation & Communication Center" subtitle="Rules that convert Odoo events into accountable admissions workflows.">
+ <section className="grid kpis compact-kpis"><div className="card"><div className="kpi-label">Rules designed</div><div className="kpi-value">{rules.length}</div><div className="kpi-note">Admissions workflows</div></div><div className="card"><div className="kpi-label">Live foundations</div><div className="kpi-value">4</div><div className="kpi-note">Queues, scoring, analytics, write-back</div></div><div className="card"><div className="kpi-label">External APIs</div><div className="kpi-value">0</div><div className="kpi-note">Local-first design</div></div><div className="card"><div className="kpi-label">Safety</div><div className="kpi-value">Review</div><div className="kpi-note">Human approval for writes</div></div></section>
+ <section className="card table-card"><div className="section-head"><div><div className="section-title">Automation rulebook</div><div className="section-sub">Rules are visible before unattended writes are enabled.</div></div></div><div className="table-scroll"><table><thead><tr><th>Rule</th><th>Trigger</th><th>Action</th><th>Status</th></tr></thead><tbody>{rules.map(r=><tr key={r[0]}><td><strong>{r[0]}</strong></td><td>{r[1]}</td><td>{r[2]}</td><td><span className={r[3].startsWith('Live')?'badge good':r[3].startsWith('Needs')?'badge hot':'badge'}>{r[3]}</span></td></tr>)}</tbody></table></div></section>
+ <section className="grid two"><div className="card"><div className="section-title">Communication layer</div><div className="section-sub">Prepared channels</div><p><strong>Current:</strong> Odoo activities, internal notes, owner queues and lead actions.</p><p><strong>Next integrations:</strong> Meta WhatsApp Cloud API, email templates and calling-provider logs. No external AI API is required.</p></div><div className="card"><div className="section-title">Permission model</div><div className="section-sub">Planned access boundaries</div><p><strong>Super Admin:</strong> all settings and writes.</p><p><strong>Management:</strong> all leads, targets and reports.</p><p><strong>Team Lead:</strong> assigned team and approvals.</p><p><strong>Agent:</strong> assigned leads and personal metrics.</p><p><strong>Read only:</strong> dashboards without write access.</p></div></section>
+ </AppShell>}
