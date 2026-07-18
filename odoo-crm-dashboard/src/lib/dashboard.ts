@@ -3,6 +3,7 @@ import { readGroup, searchCount } from '@/lib/odoo';
 
 type StageGroup = { stage_id?: [number, string] | false; stage_id_count?: number; __count?: number; expected_revenue?: number };
 type UserGroup = { user_id?: [number, string] | false; user_id_count?: number; __count?: number; expected_revenue?: number };
+type ActivityGroup = { res_id?: number; res_id_count?: number; __count?: number };
 
 export type DashboardData = {
   connected: boolean;
@@ -30,23 +31,25 @@ async function loadDashboardData(): Promise<DashboardData> {
     stagnantDate.setDate(stagnantDate.getDate() - 7);
     const stagnantCutoff = stagnantDate.toISOString().slice(0, 19).replace('T', ' ');
     const confirmedDomain = [['stage_id.name', '=', 'Admission Confirmed']];
+    const crmActivityDomain = [['res_model', '=', 'crm.lead']];
 
-    // Two small concurrent requests at a time: much faster than fully sequential,
-    // while avoiding the burst that previously triggered Odoo HTTP 429 responses.
     const [stageGroups, userGroups] = await Promise.all([
       readGroup<StageGroup>('crm.lead', [['active', '=', true]], ['stage_id', 'expected_revenue:sum'], ['stage_id']),
       readGroup<UserGroup>('crm.lead', [['active', '=', true]], ['user_id', 'expected_revenue:sum'], ['user_id']),
     ]);
+
     const [admissionUserGroups, dueToday] = await Promise.all([
       readGroup<UserGroup>('crm.lead', confirmedDomain, ['user_id'], ['user_id']),
-      searchCount('crm.lead', [['active', '=', true], ['activity_date_deadline', '=', today]]),
+      searchCount('mail.activity', [...crmActivityDomain, ['date_deadline', '=', today]]),
     ]);
+
     const [overdue, stagnant] = await Promise.all([
-      searchCount('crm.lead', [['active', '=', true], ['activity_date_deadline', '<', today]]),
+      searchCount('mail.activity', [...crmActivityDomain, ['date_deadline', '<', today]]),
       searchCount('crm.lead', [['active', '=', true], ['write_date', '<', stagnantCutoff]]),
     ]);
-    const [noAction, appointments] = await Promise.all([
-      searchCount('crm.lead', [['active', '=', true], ['activity_date_deadline', '=', false]]),
+
+    const [activityLeadGroups, appointments] = await Promise.all([
+      readGroup<ActivityGroup>('mail.activity', crmActivityDomain, ['res_id'], ['res_id']),
       searchCount('crm.lead', [['active', '=', true], ['stage_id.name', 'ilike', 'Appointment']]),
     ]);
 
@@ -57,6 +60,8 @@ async function loadDashboardData(): Promise<DashboardData> {
     })).sort((a, b) => b.count - a.count);
 
     const totalLeads = normalizedStages.reduce((sum, stage) => sum + stage.count, 0);
+    const leadsWithActivity = new Set(activityLeadGroups.map((group) => Number(group.res_id || 0)).filter(Boolean)).size;
+    const noAction = Math.max(totalLeads - leadsWithActivity, 0);
     const confirmedStage = normalizedStages.find((stage) => stage.name.toLowerCase() === 'admission confirmed');
     const admissions = confirmedStage?.count || 0;
     const confirmedRevenue = confirmedStage?.value || 0;
@@ -73,8 +78,8 @@ async function loadDashboardData(): Promise<DashboardData> {
         ['Total Leads', totalLeads.toLocaleString('en-IN'), 'Cached live Odoo snapshot'],
         ['Admissions', admissions.toLocaleString('en-IN'), `${formatMoney(confirmedRevenue)} confirmed`],
         ['Conversion', `${conversion.toFixed(2)}%`, 'Admissions ÷ total leads'],
-        ['Due Today', dueToday.toLocaleString('en-IN'), 'Needs action'],
-        ['Overdue', overdue.toLocaleString('en-IN'), 'Follow-up deadline passed'],
+        ['Due Today', dueToday.toLocaleString('en-IN'), 'Scheduled Odoo activities'],
+        ['Overdue', overdue.toLocaleString('en-IN'), 'Overdue Odoo activities'],
         ['Forecast', formatMoney(normalizedStages.reduce((sum, stage) => sum + stage.value, 0)), 'Expected revenue pipeline'],
       ],
       alerts: { overdue, stagnant, noAction, appointments },
@@ -92,6 +97,4 @@ async function loadDashboardData(): Promise<DashboardData> {
   }
 }
 
-// Vercel Data Cache persists across serverless invocations. Most visits now return
-// immediately without waiting for Odoo; one fresh snapshot is generated every 2 minutes.
-export const getDashboardData = unstable_cache(loadDashboardData, ['odoo-dashboard-v3'], { revalidate: 120, tags: ['odoo-dashboard'] });
+export const getDashboardData = unstable_cache(loadDashboardData, ['odoo-dashboard-v4'], { revalidate: 120, tags: ['odoo-dashboard'] });
