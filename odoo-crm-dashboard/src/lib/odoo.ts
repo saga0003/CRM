@@ -36,34 +36,49 @@ function getConfig(): OdooConfig {
   return { url, database, username, password };
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function jsonRpc<T>(service: string, method: string, args: unknown[]): Promise<T> {
   const { url } = getConfig();
-  const response = await fetch(`${url}/jsonrpc`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      method: 'call',
-      params: { service, method, args },
-      id: Date.now(),
-    }),
-    cache: 'no-store',
-  });
 
-  if (!response.ok) {
-    throw new Error(`Odoo HTTP error ${response.status}`);
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const response = await fetch(`${url}/jsonrpc`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        method: 'call',
+        params: { service, method, args },
+        id: Date.now(),
+      }),
+      cache: 'no-store',
+    });
+
+    if (response.status === 429 && attempt < 3) {
+      const retryAfter = Number(response.headers.get('retry-after') || 0);
+      await sleep(retryAfter > 0 ? retryAfter * 1000 : 500 * 2 ** attempt);
+      continue;
+    }
+
+    if (!response.ok) {
+      throw new Error(`Odoo HTTP error ${response.status}`);
+    }
+
+    const payload = (await response.json()) as JsonRpcResponse<T>;
+    if (payload.error) {
+      throw new Error(payload.error.data?.message || payload.error.message || 'Unknown Odoo RPC error');
+    }
+
+    if (payload.result === undefined) {
+      throw new Error('Odoo returned no result.');
+    }
+
+    return payload.result;
   }
 
-  const payload = (await response.json()) as JsonRpcResponse<T>;
-  if (payload.error) {
-    throw new Error(payload.error.data?.message || payload.error.message || 'Unknown Odoo RPC error');
-  }
-
-  if (payload.result === undefined) {
-    throw new Error('Odoo returned no result.');
-  }
-
-  return payload.result;
+  throw new Error('Odoo rate limit exceeded. Please retry shortly.');
 }
 
 let cachedUid: number | null = null;
