@@ -2,6 +2,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 const nav = [
+  ['/salesos', 'SalesOS Advanced'],
   ['/', 'Command Center'],
   ['/operations', 'Operations Queues'],
   ['/leads', 'Leads Workspace'],
