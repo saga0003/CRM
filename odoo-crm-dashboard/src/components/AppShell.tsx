@@ -3,9 +3,13 @@ import type { ReactNode } from 'react';
 
 const nav = [
   ['/', 'Command Center'],
+  ['/operations', 'Operations Queues'],
   ['/leads', 'Leads Workspace'],
   ['/followups', 'Follow-up Queue'],
   ['/telecallers', 'Telecaller OS'],
+  ['/pipeline', 'Pipeline & Ageing'],
+  ['/targets', 'Targets & Forecast'],
+  ['/lost', 'Lost Lead Intelligence'],
   ['/analytics', 'Management Analytics'],
 ];
 
@@ -15,9 +19,7 @@ export function AppShell({ title, subtitle, active, children }: { title: string;
       <aside className="sidebar">
         <div className="brand">Admissions <span>OS</span></div>
         <div className="side-caption">Odoo-connected operating system</div>
-        <nav className="nav">
-          {nav.map(([href, label]) => <Link className={active === href ? 'active' : ''} href={href} key={href}>{label}</Link>)}
-        </nav>
+        <nav className="nav">{nav.map(([href,label])=><Link className={active===href?'active':''} href={href} key={href}>{label}</Link>)}</nav>
         <div className="side-footer">St. Mary&apos;s Operations<br/><span>Live Odoo workspace</span></div>
       </aside>
       <main className="main">
