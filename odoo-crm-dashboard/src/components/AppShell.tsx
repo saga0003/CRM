@@ -9,7 +9,11 @@ const nav = [
   ['/telecallers', 'Telecaller OS'],
   ['/pipeline', 'Pipeline & Ageing'],
   ['/targets', 'Targets & Forecast'],
+  ['/segments', 'Institute & Grade Metrics'],
+  ['/intelligence', 'Local Lead Intelligence'],
   ['/lost', 'Lost Lead Intelligence'],
+  ['/data-quality', 'Data Quality'],
+  ['/automation', 'Automation Center'],
   ['/analytics', 'Management Analytics'],
 ];
 
