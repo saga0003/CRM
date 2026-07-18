@@ -40,43 +40,36 @@ function isoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-export async function getDashboardData(): Promise<DashboardData> {
+let dashboardCache: { expiresAt: number; data: DashboardData } | null = null;
+let inFlightDashboard: Promise<DashboardData> | null = null;
+
+async function loadDashboardData(): Promise<DashboardData> {
   try {
     const today = isoDate(new Date());
     const stagnantDate = new Date();
     stagnantDate.setDate(stagnantDate.getDate() - 7);
     const stagnantCutoff = stagnantDate.toISOString().slice(0, 19).replace('T', ' ');
-
     const confirmedDomain = [['stage_id.name', '=', 'Admission Confirmed']];
 
-    const [
-      totalLeads,
-      admissions,
-      dueToday,
-      overdue,
-      stagnant,
-      noAction,
-      appointments,
-      stageGroups,
-      userGroups,
-      admissionUserGroups,
-      revenueGroups,
-    ] = await Promise.all([
-      searchCount('crm.lead', [['active', '=', true]]),
-      searchCount('crm.lead', confirmedDomain),
-      searchCount('crm.lead', [['active', '=', true], ['activity_date_deadline', '=', today]]),
-      searchCount('crm.lead', [['active', '=', true], ['activity_date_deadline', '<', today]]),
-      searchCount('crm.lead', [['active', '=', true], ['write_date', '<', stagnantCutoff]]),
-      searchCount('crm.lead', [['active', '=', true], ['activity_date_deadline', '=', false]]),
-      searchCount('crm.lead', [['active', '=', true], ['stage_id.name', 'ilike', 'Appointment']]),
-      readGroup<StageGroup>('crm.lead', [['active', '=', true]], ['stage_id', 'expected_revenue:sum'], ['stage_id']),
-      readGroup<UserGroup>('crm.lead', [['active', '=', true]], ['user_id', 'expected_revenue:sum'], ['user_id']),
-      readGroup<UserGroup>('crm.lead', confirmedDomain, ['user_id'], ['user_id']),
-      readGroup<{ expected_revenue?: number }>('crm.lead', confirmedDomain, ['expected_revenue:sum'], []),
-    ]);
-
-    const confirmedRevenue = Number(revenueGroups[0]?.expected_revenue || 0);
-    const conversion = totalLeads > 0 ? (admissions / totalLeads) * 100 : 0;
+    // Keep Odoo calls sequential. Some hosted Odoo instances rate-limit bursts of parallel JSON-RPC requests.
+    const stageGroups = await readGroup<StageGroup>(
+      'crm.lead',
+      [['active', '=', true]],
+      ['stage_id', 'expected_revenue:sum'],
+      ['stage_id'],
+    );
+    const userGroups = await readGroup<UserGroup>(
+      'crm.lead',
+      [['active', '=', true]],
+      ['user_id', 'expected_revenue:sum'],
+      ['user_id'],
+    );
+    const admissionUserGroups = await readGroup<UserGroup>('crm.lead', confirmedDomain, ['user_id'], ['user_id']);
+    const dueToday = await searchCount('crm.lead', [['active', '=', true], ['activity_date_deadline', '=', today]]);
+    const overdue = await searchCount('crm.lead', [['active', '=', true], ['activity_date_deadline', '<', today]]);
+    const stagnant = await searchCount('crm.lead', [['active', '=', true], ['write_date', '<', stagnantCutoff]]);
+    const noAction = await searchCount('crm.lead', [['active', '=', true], ['activity_date_deadline', '=', false]]);
+    const appointments = await searchCount('crm.lead', [['active', '=', true], ['stage_id.name', 'ilike', 'Appointment']]);
 
     const normalizedStages = stageGroups
       .map((group) => ({
@@ -85,6 +78,12 @@ export async function getDashboardData(): Promise<DashboardData> {
         value: Number(group.expected_revenue || 0),
       }))
       .sort((a, b) => b.count - a.count);
+
+    const totalLeads = normalizedStages.reduce((sum, stage) => sum + stage.count, 0);
+    const confirmedStage = normalizedStages.find((stage) => stage.name.toLowerCase() === 'admission confirmed');
+    const admissions = confirmedStage?.count || 0;
+    const confirmedRevenue = confirmedStage?.value || 0;
+    const conversion = totalLeads > 0 ? (admissions / totalLeads) * 100 : 0;
 
     const maxStageCount = Math.max(...normalizedStages.map((stage) => stage.count), 1);
     const stages: DashboardData['stages'] = normalizedStages.slice(0, 10).map((stage) => [
@@ -133,16 +132,32 @@ export async function getDashboardData(): Promise<DashboardData> {
       connected: false,
       error: message,
       kpis: [
-        ['Total Leads', '—', 'Odoo unavailable'],
-        ['Admissions', '—', 'Odoo unavailable'],
-        ['Conversion', '—', 'Odoo unavailable'],
-        ['Due Today', '—', 'Odoo unavailable'],
-        ['Overdue', '—', 'Odoo unavailable'],
-        ['Forecast', '—', 'Odoo unavailable'],
+        ['Total Leads', '—', 'Odoo temporarily unavailable'],
+        ['Admissions', '—', 'Odoo temporarily unavailable'],
+        ['Conversion', '—', 'Odoo temporarily unavailable'],
+        ['Due Today', '—', 'Odoo temporarily unavailable'],
+        ['Overdue', '—', 'Odoo temporarily unavailable'],
+        ['Forecast', '—', 'Odoo temporarily unavailable'],
       ],
       alerts: { overdue: 0, stagnant: 0, noAction: 0, appointments: 0 },
       stages: [],
       agents: [],
     };
   }
+}
+
+export async function getDashboardData(): Promise<DashboardData> {
+  const now = Date.now();
+  if (dashboardCache && dashboardCache.expiresAt > now) return dashboardCache.data;
+  if (inFlightDashboard) return inFlightDashboard;
+
+  inFlightDashboard = loadDashboardData();
+  const data = await inFlightDashboard;
+  inFlightDashboard = null;
+
+  if (data.connected) {
+    dashboardCache = { data, expiresAt: Date.now() + 60_000 };
+  }
+
+  return data;
 }
